@@ -6,10 +6,10 @@ public class Conta {
     private String name;
     private double value;
 
-    public Conta(int accountNumber, String name, double value) {
+    public Conta(int accountNumber, String name, double initialDeposit) {
         this.accountNumber = accountNumber;
         this.name = name;
-        this.value = value;
+        addValue(initialDeposit);
     }
 
     public Conta(int accountNumber, String name) {
@@ -38,10 +38,20 @@ public class Conta {
     }
 
     public void removeValue(double value) {
-        if (this.value > 0) {
-            this.value -= value+5;
+        if (value <= getValue()) {
+            this.value -= value + 5;
         } else {
-            System.out.println("Não possui saldo");
+            throw new Error("Não possui saldo");
         }
+    }
+
+    public String toString() {
+        return "Account "
+                + getAccountNumber()
+                + ", Holder: "
+                + getName()
+                + ", Balance: $ "
+                + String.format("%.2f", getValue())
+                ;
     }
 }

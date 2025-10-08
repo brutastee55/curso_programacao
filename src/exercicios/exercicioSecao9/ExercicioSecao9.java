@@ -35,7 +35,7 @@ public class ExercicioSecao9 {
         }
 
         System.out.println("Account data:");
-        System.out.printf("Account %d, Holder: %s, Balance: %.2f%n%n", conta.getAccountNumber(), conta.getName(), conta.getValue());
+        System.out.println(conta);
 
 
         System.out.print("Enter a deposit value: ");
@@ -43,14 +43,13 @@ public class ExercicioSecao9 {
         conta.addValue(value);
 
         System.out.println("Updated account data:");
-        System.out.printf("Account %d, Holder: %s, Balance: %.2f%n%n", conta.getAccountNumber(), conta.getName(), conta.getValue());
+        System.out.println(conta);
 
         System.out.print("Enter a withdraw value: ");
         value = sc.nextDouble();
         conta.removeValue(value);
 
         System.out.println("Updated account data:");
-        System.out.printf("Account %d, Holder: %s, Balance: %.2f", conta.getAccountNumber(), conta.getName(), conta.getValue());
-
+        System.out.println(conta);
     }
 }
