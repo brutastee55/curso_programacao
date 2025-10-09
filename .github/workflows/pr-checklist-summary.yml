@@ -5,9 +5,9 @@ on:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
-  pull-requests: read
   contents: read
-  issues: write  # necessário para comentar/rotular na PR
+  pull-requests: write
+  issues: write   # necessário para criar/atualizar comentários e adicionar labels
 
 jobs:
   summarize:
@@ -46,16 +46,10 @@ jobs:
           const checked = items.filter(i => i.checked);
           const unchecked = items.filter(i => !i.checked);
 
-          let summary = '';
-          if (total === 0) {
-            summary = 'ℹ️ Nenhum item de checklist (`- [ ]`) foi encontrado no corpo da PR.';
-          } else {
-            summary =
-              `**Checklist:** ${checked.length}/${total} marcados\n\n` +
-              (unchecked.length
-                ? `**Itens pendentes:**\n` + unchecked.map(i => `- [ ] ${i.text}`).join('\n')
-                : '✅ Tudo marcado.');
-          }
+          const summary = total === 0
+            ? 'ℹ️ Nenhum item de checklist (`- [ ]`) foi encontrado no corpo da PR.'
+            : `**Checklist:** ${checked.length}/${total} marcados\n\n` +
+              (unchecked.length ? `**Itens pendentes:**\n` + unchecked.map(i => `- [ ] ${i.text}`).join('\n') : '✅ Tudo marcado.');
 
           fs.writeFileSync('checklist_summary.md', summary, 'utf8');
           console.log(summary);
@@ -88,7 +82,6 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      # Opcional: rotular a PR conforme o status do checklist
       - name: Label conforme status (opcional)
         if: always()
         uses: actions/github-script@v7
@@ -99,15 +92,7 @@ jobs:
             const issue_number = context.issue.number;
 
             const summary = fs.readFileSync('checklist_summary.md', 'utf8');
-            let labels = [];
-            const match = summary.match(/Checklist:\s*(\d+)\/(\d+)/);
-            if (match) {
-              const done = parseInt(match[1],10);
-              const total = parseInt(match[2],10);
-              labels = done === total ? ['checklist:complete'] : ['checklist:pending'];
-            } else {
-              labels = ['checklist:missing'];
-            }
-            if (labels.length) {
-              await github.rest.issues.addLabels({ owner, repo, issue_number, labels });
-            }
+            const m = summary.match(/Checklist:\s*(\d+)\/(\d+)/);
+            const labels = !m ? ['checklist:missing'] : (parseInt(m[1],10) === parseInt(m[2],10) ? ['checklist:complete'] : ['checklist:pending']);
+
+            await github.rest.issues.addLabels({ owner, repo, issue_number, labels });
