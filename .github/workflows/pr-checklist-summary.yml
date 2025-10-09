@@ -1,0 +1,84 @@
+name: PR Checklist Summary
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+  contents: read
+  issues: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read PR body
+        id: read
+        run: |
+          BODY="$(jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH")"
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Parse checklist and create summary
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const body = process.env.PR_BODY || '';
+          const lines = body.split(/\r?\n/);
+
+          const items = [];
+          const taskRegex = /^\s*-\s*\[([ xX])\]\s*(.+)$/;
+
+          for (const l of lines) {
+            const m = l.match(taskRegex);
+            if (m) items.push({ checked: /x/i.test(m[1]), text: m[2].trim() });
+          }
+
+          const total = items.length;
+          const checked = items.filter(i => i.checked);
+          const unchecked = items.filter(i => !i.checked);
+
+          const summary =
+            `**Checklist:** ${checked.length}/${total} marcados\n\n` +
+            (unchecked.length
+              ? `**Itens pendentes:**\n` + unchecked.map(i => `- [ ] ${i.text}`).join('\n')
+              : '✅ Tudo marcado.');
+
+          fs.writeFileSync('checklist_summary.md', summary, 'utf8');
+          console.log(summary);
+          NODE
+        env:
+          PR_BODY: ${{ steps.read.outputs.body }}
+
+      - name: Add to job summary
+        run: |
+          echo "## Resumo do Checklist" >> $GITHUB_STEP_SUMMARY
+          cat checklist_summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment or update comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { context, github } = require('@actions/github');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const marker = '<!-- CHECKLIST_SUMMARY -->';
+            const body = fs.readFileSync('checklist_summary.md', 'utf8') + `\n\n${marker}`;
+
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const previous = comments.find(c => c.user.type === 'Bot' && (c.body || '').includes(marker));
+
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
