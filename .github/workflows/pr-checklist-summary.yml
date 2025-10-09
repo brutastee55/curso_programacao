@@ -7,7 +7,7 @@ on:
 permissions:
   pull-requests: read
   contents: read
-  issues: write
+  issues: write  # necessário para comentar/rotular na PR
 
 jobs:
   summarize:
@@ -27,6 +27,7 @@ jobs:
           node-version: 20
 
       - name: Parse checklist and create summary
+        id: parse
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -45,11 +46,16 @@ jobs:
           const checked = items.filter(i => i.checked);
           const unchecked = items.filter(i => !i.checked);
 
-          const summary =
-            `**Checklist:** ${checked.length}/${total} marcados\n\n` +
-            (unchecked.length
-              ? `**Itens pendentes:**\n` + unchecked.map(i => `- [ ] ${i.text}`).join('\n')
-              : '✅ Tudo marcado.');
+          let summary = '';
+          if (total === 0) {
+            summary = 'ℹ️ Nenhum item de checklist (`- [ ]`) foi encontrado no corpo da PR.';
+          } else {
+            summary =
+              `**Checklist:** ${checked.length}/${total} marcados\n\n` +
+              (unchecked.length
+                ? `**Itens pendentes:**\n` + unchecked.map(i => `- [ ] ${i.text}`).join('\n')
+                : '✅ Tudo marcado.');
+          }
 
           fs.writeFileSync('checklist_summary.md', summary, 'utf8');
           console.log(summary);
@@ -67,7 +73,6 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const { context, github } = require('@actions/github');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
 
@@ -75,10 +80,34 @@ jobs:
             const body = fs.readFileSync('checklist_summary.md', 'utf8') + `\n\n${marker}`;
 
             const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
-            const previous = comments.find(c => c.user.type === 'Bot' && (c.body || '').includes(marker));
+            const previous = comments.find(c => (c.user?.type === 'Bot') && (c.body || '').includes(marker));
 
             if (previous) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      # Opcional: rotular a PR conforme o status do checklist
+      - name: Label conforme status (opcional)
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            const summary = fs.readFileSync('checklist_summary.md', 'utf8');
+            let labels = [];
+            const match = summary.match(/Checklist:\s*(\d+)\/(\d+)/);
+            if (match) {
+              const done = parseInt(match[1],10);
+              const total = parseInt(match[2],10);
+              labels = done === total ? ['checklist:complete'] : ['checklist:pending'];
+            } else {
+              labels = ['checklist:missing'];
+            }
+            if (labels.length) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels });
             }
